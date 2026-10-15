@@ -1,16 +1,16 @@
 # tsuri
 
-Processing 4 client + Spring Boot Java server + H2 database.
+Processing 4 client + Spring Boot Java server + SQLite database.
 
 ## Run server on Windows
 
 Install JDK 21 and Maven. From the repository root:
 
 ```powershell
-mvn spring-boot:run
+.\run-server.ps1
 ```
 
-Server URL: http://localhost:8080
+The server listens at `http://localhost:8080`. SQLite data is stored in `data/tsuri.db`.
 
 ## Run client
 
@@ -23,7 +23,7 @@ Install Processing 4, open `client/tsuri/tsuri.pde`, and press Run. The default 
 - R: reel
 - N: new session
 
-The scene shows the boat bow and ocean surface only; there is no underwater view. Successful reels save sample catches to H2. Camera footage is not stored or uploaded.
+The scene shows the boat bow and ocean surface only; there is no underwater view. Successful reels save sample catches to SQLite. Camera footage is not stored or uploaded.
 
 ## API
 
@@ -32,4 +32,4 @@ The scene shows the boat bow and ocean surface only; there is no underwater view
 - `POST /api/game/event` with `{"sessionId":1,"type":"CAST"}`
 - `GET /api/game/history`
 
-This MVP uses HTTP requests and keyboard/mouse test controls. Camera gesture recognition, WebSocket push, tests, and packaged Windows launch scripts are follow-up work.
+This MVP uses HTTP requests and keyboard/mouse test controls. Camera gesture recognition, WebSocket push, automated integration tests, and packaged Windows launch scripts are follow-up work.
