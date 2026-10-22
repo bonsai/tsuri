@@ -16,7 +16,7 @@ The server listens at `http://localhost:8080`. SQLite data is stored in `data/ts
 
 ### Browser fishing game
 
-Start the Java server, then open `http://localhost:8080/` in a browser. The root `index.html` is a responsive Canvas fishing game: cast, wait for a bite, and reel in a catch. If the server is unavailable, the page falls back to local demo mode; catches are only persisted when the Java server is running.
+Start the Java server, then open `http://localhost:8080/` in a browser (Spring Boot serves the page from `src/main/resources/static/`). `src/main/resources/static/index.html` serves a responsive Canvas fishing game: cast, wait for a bite, and reel in a catch. If the server is unavailable, the page falls back to local demo mode; catches are only persisted when the Java server is running.
 
 ### Processing client
 
