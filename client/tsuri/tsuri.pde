@@ -161,13 +161,13 @@ void request(String method, String path, String body, boolean startRequest) {
       String line;
       while ((line = reader.readLine()) != null) response.append(line);
       reader.close();
-      JSONObject data = parseJSONObject(response.toString());
+      JSONObject data = JSONObject.fromJSON(response.toString());
       if (data != null) {
-        if (data.hasKey("sessionId")) sessionId = data.getLong("sessionId");
-        if (data.hasKey("status")) gameStatus = data.getString("status");
-        if (data.hasKey("score")) score = data.getInt("score");
-        if (data.hasKey("catches")) catches = data.getInt("catches");
-        if (data.hasKey("casts")) casts = data.getInt("casts");
+        if (!data.isNull("sessionId")) sessionId = data.getLong("sessionId");
+        if (!data.isNull("status")) gameStatus = data.getString("status");
+        if (!data.isNull("score")) score = data.getInt("score");
+        if (!data.isNull("catches")) catches = data.getInt("catches");
+        if (!data.isNull("casts")) casts = data.getInt("casts");
       }
       connectionStatus = code >= 200 && code < 300
         ? "Connected: " + serverUrl : "Server error HTTP " + code;
