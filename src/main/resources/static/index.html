@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TSURI — 海釣りゲーム</title>
+  <style>
+    :root { color-scheme: dark; --ink:#f5fbff; --glass:rgba(7,28,45,.72); --line:rgba(220,245,255,.25); }
+    * { box-sizing: border-box; }
+    body { margin:0; min-height:100vh; background:#06283b; color:var(--ink); font-family:system-ui,-apple-system,"Segoe UI",sans-serif; overflow:hidden; }
+    #game { position:fixed; inset:0; width:100%; height:100%; display:block; }
+    .hud { position:fixed; z-index:2; inset:0; padding:clamp(12px,3vw,28px); display:flex; flex-direction:column; justify-content:space-between; pointer-events:none; }
+    .top { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+    .brand,.stats,.message,.controls { background:var(--glass); border:1px solid var(--line); backdrop-filter:blur(10px); box-shadow:0 8px 32px #00152140; }
+    .brand { padding:12px 16px; border-radius:16px; }
+    .brand strong { display:block; letter-spacing:.18em; font-size:1.05rem; }
+    .brand span { font-size:.78rem; opacity:.75; }
+    .stats { display:flex; gap:clamp(10px,3vw,26px); padding:12px 16px; border-radius:16px; }
+    .stat small { display:block; opacity:.72; font-size:.72rem; }
+    .stat b { font-size:clamp(1rem,2.6vw,1.4rem); font-variant-numeric:tabular-nums; }
+    .bottom { display:flex; flex-direction:column; align-items:center; gap:12px; }
+    .message { max-width:min(680px,100%); padding:12px 18px; border-radius:14px; text-align:center; line-height:1.5; }
+    .controls { pointer-events:auto; display:flex; flex-wrap:wrap; justify-content:center; gap:9px; padding:10px; border-radius:18px; }
+    button { border:1px solid #ffffff38; border-radius:12px; padding:12px 18px; min-width:112px; font:inherit; font-weight:700; color:#f7fcff; background:#18445c; cursor:pointer; transition:transform .12s, background .12s; }
+    button:hover { background:#24617d; } button:active { transform:translateY(1px) scale(.98); }
+    button.primary { background:#f0b84b; color:#182b35; border-color:#ffdb87; }
+    button:disabled { opacity:.42; cursor:not-allowed; }
+    #connection { position:fixed; left:12px; bottom:10px; z-index:3; font-size:.7rem; opacity:.75; }
+    .hint { font-size:.75rem; opacity:.75; text-align:center; }
+    @media(max-width:560px) { .stats { gap:10px; padding:10px; } .stat small { font-size:.65rem; } button { flex:1 1 40%; min-width:0; padding:11px 8px; } .brand { padding:10px 12px; } }
+  </style>
+</head>
+<body>
+  <canvas id="game" aria-label="水平線と海面、船首を眺める釣りゲーム"></canvas>
+  <main class="hud">
+    <div class="top">
+      <div class="brand"><strong>TSURI</strong><span>静かな海で、ひと釣り。</span></div>
+      <div class="stats" aria-live="polite">
+        <div class="stat"><small>スコア</small><b id="score">0</b></div>
+        <div class="stat"><small>釣果</small><b id="catches">0</b></div>
+        <div class="stat"><small>投げた回数</small><b id="casts">0</b></div>
+      </div>
+    </div>
+    <div class="bottom">
+      <div class="message" id="message" aria-live="polite">竿を投げて、魚のアタリを待とう。</div>
+      <div class="controls">
+        <button class="primary" id="cast">🎣 投げる (C)</button>
+        <button id="bite">🐟 アタリテスト (B)</button>
+        <button id="reel">🌀 リールを巻く (R)</button>
+        <button id="reset">↻ 新しい釣り (N)</button>
+      </div>
+      <div class="hint">キーボード C / B / R / N またはボタンで操作。B は動作確認用です。</div>
+    </div>
+  </main>
+  <div id="connection">サーバーに接続中…</div>
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const $ = id => document.getElementById(id);
+    const connection = $('connection');
+    const message = $('message');
+    let sessionId = null;
+    let gameState = { status:'IDLE', score:0, catches:0, casts:0 };
+    let demoMode = false;
+    let waveTime = 0;
+    let caughtFish = false;
+
+    function resize() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.floor(innerWidth * dpr);
+      canvas.height = Math.floor(innerHeight * dpr);
+      canvas.style.width = innerWidth + 'px';
+      canvas.style.height = innerHeight + 'px';
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
+    }
+
+    function draw() {
+      const w = innerWidth, h = innerHeight;
+      const horizon = h * .43;
+      const sky = ctx.createLinearGradient(0, 0, 0, horizon);
+      sky.addColorStop(0, '#123d59'); sky.addColorStop(1, '#83c8d8');
+      ctx.fillStyle = sky; ctx.fillRect(0, 0, w, horizon);
+      // soft sunlight near the horizon
+      const glow = ctx.createRadialGradient(w*.72, horizon*.7, 2, w*.72, horizon*.7, Math.max(w,h)*.34);
+      glow.addColorStop(0, 'rgba(255,225,157,.42)'); glow.addColorStop(1, 'rgba(255,225,157,0)');
+      ctx.fillStyle = glow; ctx.fillRect(0,0,w,horizon);
+      // ocean surface only — no underwater view
+      const sea = ctx.createLinearGradient(0,horizon,0,h);
+      sea.addColorStop(0,'#287e9a'); sea.addColorStop(1,'#06364e');
+      ctx.fillStyle = sea; ctx.fillRect(0,horizon,w,h-horizon);
+      ctx.strokeStyle = 'rgba(205,246,255,.18)'; ctx.lineWidth = 1;
+      for (let i=0;i<18;i++) {
+        const y = horizon + ((i*19 + waveTime*(8+i%3)) % Math.max(1,h-horizon));
+        const span = 15 + (i%5)*12;
+        const x = ((i*97 + waveTime*(12+i%4)) % (w+span)) - span;
+        ctx.beginPath(); ctx.moveTo(x,y); ctx.quadraticCurveTo(x+span/2,y-2,x+span,y); ctx.stroke();
+      }
+      // distant horizon glints
+      ctx.strokeStyle='rgba(255,255,255,.3)';
+      for(let i=0;i<10;i++){ const x=(i*131+waveTime*5)%(w+50)-25; ctx.beginPath(); ctx.moveTo(x,horizon+8+i%4*4); ctx.lineTo(x+22,horizon+8+i%4*4); ctx.stroke(); }
+      // first-person boat bow only
+      ctx.fillStyle='#382f2a'; ctx.beginPath(); ctx.moveTo(w*.25,h); ctx.lineTo(w*.38,h*.82); ctx.lineTo(w*.62,h*.82); ctx.lineTo(w*.75,h); ctx.closePath(); ctx.fill();
+      ctx.fillStyle='#76533a'; ctx.beginPath(); ctx.moveTo(w*.31,h); ctx.lineTo(w*.405,h*.85); ctx.lineTo(w*.595,h*.85); ctx.lineTo(w*.69,h); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle='#bd9564'; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(w*.39,h*.86); ctx.lineTo(w*.61,h*.86); ctx.stroke();
+      // fish appears above the water only after a successful catch
+      if (caughtFish) {
+        const x=w*.5, y=h*.59;
+        ctx.save(); ctx.translate(x,y); ctx.rotate(-.12);
+        ctx.fillStyle='#d9e8e8'; ctx.beginPath(); ctx.ellipse(0,0,35,15,0,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle='#8eb5bf'; ctx.beginPath(); ctx.moveTo(-8,-2); ctx.lineTo(4,-20); ctx.lineTo(12,-3); ctx.fill();
+        ctx.fillStyle='#d9e8e8'; ctx.beginPath(); ctx.moveTo(31,0); ctx.lineTo(48,-12); ctx.lineTo(45,8); ctx.closePath(); ctx.fill();
+        ctx.fillStyle='#173744'; ctx.beginPath(); ctx.arc(22,-3,2.5,0,Math.PI*2); ctx.fill();
+        ctx.restore();
+      }
+    }
+
+    function renderState(state) {
+      gameState = { ...gameState, ...state };
+      $('score').textContent = gameState.score ?? 0;
+      $('catches').textContent = gameState.catches ?? 0;
+      $('casts').textContent = gameState.casts ?? 0;
+      caughtFish = gameState.status === 'CAUGHT';
+      draw();
+    }
+
+    async function apiEvent(type) {
+      if (demoMode) return localEvent(type);
+      try {
+        const response = await fetch('/api/game/event', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({sessionId, type})
+        });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        renderState(await response.json());
+        return true;
+      } catch (error) {
+        connection.textContent = 'サーバー未接続 — ローカル試遊モード';
+        demoMode = true;
+        message.textContent = 'サーバーに接続できないため、ブラウザー内の試遊モードで動作します。';
+        return localEvent(type);
+      }
+    }
+
+    function localEvent(type) {
+      if (type === 'CAST') { gameState.status='WAITING'; gameState.casts++; caughtFish=false; message.textContent='糸を垂らした。水面を見ながらアタリを待とう。'; }
+      if (type === 'BITE') { gameState.status='BITE'; message.textContent='ピクッ！ 魚が食いついた！ リールを巻こう。'; }
+      if (type === 'REEL') {
+        if (gameState.status === 'WAITING' || gameState.status === 'BITE') {
+          gameState.status='CAUGHT'; gameState.catches++; gameState.score+=10;
+          message.textContent='釣れた！ 10ポイント獲得。魚が水面の上に現れた！';
+        } else { gameState.status='REELING'; message.textContent='まだアタリがない。先に投げて待とう。'; }
+      }
+      if (type === 'RESET') { gameState.status='IDLE'; caughtFish=false; message.textContent='新しい釣りを始めよう。竿を投げてね。'; }
+      renderState(gameState);
+    }
+
+    async function startSession() {
+      demoMode = false;
+      try {
+        const response = await fetch('/api/game/start', { method:'POST' });
+        if (!response.ok) throw new Error('HTTP ' + response.status);
+        const state = await response.json();
+        sessionId = state.sessionId;
+        renderState(state);
+        connection.textContent = 'サーバー接続中 · セッション ' + sessionId;
+        message.textContent = '竿を投げて、魚のアタリを待とう。';
+      } catch (error) {
+        demoMode = true; sessionId = null;
+        gameState = { status:'IDLE', score:0, catches:0, casts:0 };
+        renderState(gameState);
+        connection.textContent = 'ローカル試遊モード';
+        message.textContent = 'サーバー未接続でも遊べます。釣果の保存にはJavaサーバーを起動してください。';
+      }
+    }
+
+    $('cast').addEventListener('click', () => apiEvent('CAST'));
+    $('bite').addEventListener('click', () => apiEvent('BITE'));
+    $('reel').addEventListener('click', () => apiEvent('REEL'));
+    $('reset').addEventListener('click', async () => {
+      if (!demoMode && sessionId) {
+        try { await apiEvent('END'); } catch (_) {}
+      }
+      await startSession();
+    });
+    window.addEventListener('keydown', event => {
+      if (event.repeat || /INPUT|TEXTAREA/.test(document.activeElement.tagName)) return;
+      const key = event.key.toLowerCase();
+      if (key === 'c') apiEvent('CAST');
+      if (key === 'b') apiEvent('BITE');
+      if (key === 'r') apiEvent('REEL');
+      if (key === 'n') startSession();
+    });
+    window.addEventListener('resize', resize);
+    function animate() { waveTime += .35; draw(); requestAnimationFrame(animate); }
+    resize(); animate(); startSession();
+  </script>
+</body>
+</html>
