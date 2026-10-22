@@ -12,7 +12,13 @@ Install JDK 21 and Maven. From the repository root:
 
 The server listens at `http://localhost:8080`. SQLite data is stored in `data/tsuri.db`.
 
-## Run client
+## Run clients
+
+### Browser fishing game
+
+Start the Java server, then open `http://localhost:8080/` in a browser. The root `index.html` is a responsive Canvas fishing game: cast, wait for a bite, and reel in a catch. If the server is unavailable, the page falls back to local demo mode; catches are only persisted when the Java server is running.
+
+### Processing client
 
 Install Processing 4, open `client/tsuri/tsuri.pde`, and press Run. The default server URL is `http://localhost:8080`. Change `serverUrl` in the sketch to connect to another server.
 
@@ -23,7 +29,7 @@ Install Processing 4, open `client/tsuri/tsuri.pde`, and press Run. The default 
 - R: reel
 - N: new session
 
-The scene shows the boat bow and ocean surface only; there is no underwater view. Successful reels save sample catches to SQLite. Camera footage is not stored or uploaded.
+The browser scene shows only the first-person boat bow, horizon, and ocean surface; there is no underwater view. A fish appears above the surface only after a successful catch. Successful reels save catch records to SQLite when the Java server is running. Camera footage is not stored or uploaded.
 
 ## API
 
@@ -32,4 +38,4 @@ The scene shows the boat bow and ocean surface only; there is no underwater view
 - `POST /api/game/event` with `{"sessionId":1,"type":"CAST"}`
 - `GET /api/game/history`
 
-This MVP uses HTTP requests and keyboard/mouse test controls. Camera gesture recognition, WebSocket push, automated integration tests, and packaged Windows launch scripts are follow-up work.
+The browser client uses the existing HTTP API and keyboard/mouse controls. Camera gesture recognition, WebSocket push, automated integration tests, and packaged Windows launch scripts remain follow-up work.
