@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ホーム画面</title>
+  <style>
+    #userCount {
+      position: fixed;
+      top: 10px;
+      left: 10px;
+    }
+
+    .cursor {
+      position: fixed;
+      width: 10px;
+      height: 10px;
+      background: red;
+      border-radius: 50%;
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    .cursor span {
+      position: absolute;
+      left: 12px;
+      top: -5px;
+      white-space: nowrap;
+      color: black;
+    }
+  </style>
+</head>
+<body>
+  <div id="userCount">接続人数：0人</div>
+
+  <script>
+    // WebSocketサーバーに接続
+    const socket = new WebSocket("ws://192.168.13.28:8080/ws");
+
+    let myId = null;
+
+    // ユーザーごとのカーソルを管理
+    const cursors = {};
+
+    // 接続完了時
+    socket.onopen = function () {
+      console.log("WebSocketへの接続完了");
+    };
+
+    socket.onerror = function (event) {
+      console.error("WebSocket接続エラー", event);
+    };
+
+    // 戻る・進むでページが復元された時
+    window.addEventListener("pageshow", function (event) {
+      if (event.persisted) {
+        location.reload();
+        console.log("ページを再読み込みします");
+      }
+    });
+
+    // マウスが動いたとき
+    document.addEventListener("mousemove", function (event) {
+      // myIdが振り分けられるまでは座標を送らない
+      if (myId === null) return;
+
+      const x = event.clientX;
+      const y = event.clientY;
+      const data = { type: "cursor", id: myId, x, y };
+
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify(data));
+      }
+    });
+
+    // メッセージを受け取った時
+    socket.onmessage = function (event) {
+      let data;
+
+      try {
+        data = JSON.parse(event.data);
+      } catch (error) {
+        console.error("JSONメッセージの解析に失敗しました", error);
+        return;
+      }
+
+      // 接続時
+      if (data.type === "init") {
+        myId = data.id;
+      }
+
+      // 切断時
+      if (data.type === "disconnect" && cursors[data.id]) {
+        cursors[data.id].remove();
+        delete cursors[data.id];
+      }
+
+      // 接続・切断時に人数を更新
+      if (
+        data.type === "init" ||
+        data.type === "join" ||
+        data.type === "disconnect"
+      ) {
+        document.getElementById("userCount").textContent =
+          "接続人数：" + data.count + "人";
+      }
+
+      // 座標を受け取った時
+      if (data.type === "cursor") {
+        // 自分自身のカーソルは表示しない
+        if (data.id === myId) return;
+
+        // カーソルがなければ作成
+        if (!cursors[data.id]) {
+          const cursor = document.createElement("div");
+          cursor.className = "cursor";
+
+          const label = document.createElement("span");
+          label.textContent = "ID:" + data.id;
+
+          cursor.appendChild(label);
+          document.body.appendChild(cursor);
+          cursors[data.id] = cursor;
+        }
+
+        // 座標を更新
+        cursors[data.id].style.left = data.x + "px";
+        cursors[data.id].style.top = data.y + "px";
+      }
+    };
+
+    socket.onclose = function () {
+      console.warn("WebSocket接続が切断されました");
+    };
+  </script>
+</body>
+</html>
